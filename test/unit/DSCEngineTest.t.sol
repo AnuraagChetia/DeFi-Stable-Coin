@@ -24,8 +24,7 @@ contract DSCEngineTest is Test {
     uint256 public constant WETH_USD_PRICE = 2000e8;
     uint256 public constant PRICE_PRECISION = 1e10;
     uint256 public constant ADDITIONAL_PRICE_PRECISION = 1e18;
-    uint256 public constant AMOUNT_TO_MINT_OVERCOLLATERALIZED = 2 ether;
-    uint256 public constant AMOUNT_TO_MINT_UNDERCOLLATERALIZED = 10 ether;
+    uint256 public constant DSC_TO_MINT_OVERCOLLATERALIZED = 5 ether;
     uint256 public constant AMOUNT_TO_BURN = 1 ether;
     uint256 public constant STARTING_ERC20_BALANCE = 10 ether;
 
@@ -118,30 +117,37 @@ contract DSCEngineTest is Test {
     function testDepositCollateralAndMintDSC() public {
         vm.startPrank(USER);
         ERC20Mock(weth).approve(address(engine), AMOUNT_COLLATERAL);
-        engine.depositCollateralAndMintDSC(weth, AMOUNT_COLLATERAL, AMOUNT_TO_MINT_OVERCOLLATERALIZED);
+        engine.depositCollateralAndMintDSC(weth, AMOUNT_COLLATERAL, DSC_TO_MINT_OVERCOLLATERALIZED);
         (uint256 totalDscMinted, uint256 collateralValueInUsd) = engine.getAccountInformation(USER);
         vm.stopPrank();
         uint256 expectedCollateralValueInUsd =
             (AMOUNT_COLLATERAL * WETH_USD_PRICE * PRICE_PRECISION) / ADDITIONAL_PRICE_PRECISION;
-        assertEq(totalDscMinted, AMOUNT_TO_MINT_OVERCOLLATERALIZED);
+        assertEq(totalDscMinted, DSC_TO_MINT_OVERCOLLATERALIZED);
         assertEq(collateralValueInUsd, expectedCollateralValueInUsd);
     }
 
     function testMintDSC() public depositedCollateral {
         vm.startPrank(USER);
-        engine.mintDSC(AMOUNT_TO_MINT_OVERCOLLATERALIZED);
+        engine.mintDSC(DSC_TO_MINT_OVERCOLLATERALIZED);
         (uint256 totalDscMinted,) = engine.getAccountInformation(USER);
         vm.stopPrank();
-        assertEq(totalDscMinted, AMOUNT_TO_MINT_OVERCOLLATERALIZED);
+        assertEq(totalDscMinted, DSC_TO_MINT_OVERCOLLATERALIZED);
     }
 
-    // // not working
-    // function testMintDscFailsIfHealthFactorBroken() public depositedCollateral {
-    //     vm.startPrank(USER);
-    //     vm.expectRevert(DSCEngine.DSCEngine__HealthFactorBroken.selector);
-    //     engine.mintDSC(AMOUNT_TO_MINT_UNDERCOLLATERALIZED);
-    //     vm.stopPrank();
-    // }
+    function testMintDscFailsIfHealthFactorBroken() public depositedCollateral {
+        vm.startPrank(USER);
+
+        uint256 amountToMint = (AMOUNT_COLLATERAL * WETH_USD_PRICE * PRICE_PRECISION) / ADDITIONAL_PRICE_PRECISION;
+
+        uint256 expectedHealthFactor =
+            engine.calculateHealthFactor(amountToMint, engine.getUsdValue(weth, AMOUNT_COLLATERAL));
+
+        vm.expectRevert(abi.encodeWithSelector(DSCEngine.DSCEngine__HealthFactorBroken.selector, expectedHealthFactor));
+
+        engine.mintDSC(amountToMint);
+
+        vm.stopPrank();
+    }
 
     ///////////////////////////////////
     //////// BURN DSC TESTS ///////////
@@ -160,7 +166,7 @@ contract DSCEngineTest is Test {
         engine.burnDSC(AMOUNT_TO_BURN);
         vm.stopPrank();
 
-        uint256 expectedDscMinted = AMOUNT_TO_MINT_OVERCOLLATERALIZED - AMOUNT_TO_BURN;
+        uint256 expectedDscMinted = DSC_TO_MINT_OVERCOLLATERALIZED - AMOUNT_TO_BURN;
         (uint256 actualDscMinted,) = engine.getAccountInformation(USER);
         assertEq(expectedDscMinted, actualDscMinted);
     }
@@ -170,7 +176,7 @@ contract DSCEngineTest is Test {
     ///////////////////////////////////
     modifier mintDsc() {
         vm.startPrank(USER);
-        engine.mintDSC(AMOUNT_TO_MINT_OVERCOLLATERALIZED);
+        engine.mintDSC(DSC_TO_MINT_OVERCOLLATERALIZED);
         vm.stopPrank();
         _;
     }
